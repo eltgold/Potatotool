@@ -1,6 +1,5 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { AnalysisResult, ChatMessage, BotAnalysisResult, VideoAnalysisResult } from '../types';
-import { ChannelDetails, SearchResult, VideoMetadata } from '../utils/youtube';
+import { AnalysisResult, ChatMessage, BotAnalysisResult, VideoAnalysisResult, ChannelDetails, SearchResult, VideoMetadata } from '../types';
 
 const getAiClient = () => {
   const userKey = localStorage.getItem('ricetool_api_key');

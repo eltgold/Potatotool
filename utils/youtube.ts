@@ -1,7 +1,9 @@
+import { VideoMetadata, ChannelDetails, SearchResult } from '../types';
 
 export const extractVideoId = (url: string): string | null => {
   try {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
+    // Using new RegExp to avoid syntax errors with forward slashes in some environments
+    const regExp = new RegExp(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/);
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? match[2] : null;
   } catch (e) {
@@ -10,7 +12,6 @@ export const extractVideoId = (url: string): string | null => {
 };
 
 export const extractChannelId = (url: string): string | null => {
-  // Supports youtube.com/channel/ID and simple @handle (requires search)
   if (url.includes('/channel/')) {
     const parts = url.split('/channel/');
     return parts[1].split('/')[0].split('?')[0];
@@ -35,35 +36,6 @@ export const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
-export interface VideoMetadata {
-  title: string | null;
-  description: string | null;
-  keywords: string[] | null;
-  channelId?: string | null;
-  channelTitle?: string | null;
-}
-
-export interface ChannelDetails {
-  title: string;
-  description: string;
-  customUrl?: string;
-  subscriberCount?: string;
-  videoCount?: string;
-  viewCount?: string;
-  thumbnailUrl?: string;
-}
-
-export interface SearchResult {
-  id: string;
-  type: 'video' | 'channel';
-  title: string;
-  thumbnail: string;
-  channelTitle: string;
-  publishedAt?: string;
-  description?: string;
-  isSus?: boolean;
-}
-
 const INVIDIOUS_INSTANCES = [
   'https://invidious.projectsegfau.lt',
   'https://inv.tux.pizza',
@@ -85,13 +57,14 @@ const checkForSus = (text: string): boolean => {
 };
 
 const getApiKey = (): string | null => {
-  const userKey = localStorage.getItem('ricetool_api_key');
-  if (userKey) return userKey;
+  try {
+    const userKey = localStorage.getItem('ricetool_api_key');
+    if (userKey) return userKey;
+  } catch(e) {}
   return "AIzaSyDVcFhERQvxsfbVsjYZSFqW--Kwj2-PMK8";
 };
 
 export const fetchVideoMetadata = async (videoId: string): Promise<VideoMetadata> => {
-  // STRATEGY 1: Official YouTube Data API v3
   try {
     const apiKey = getApiKey();
     if (apiKey) {
@@ -116,7 +89,6 @@ export const fetchVideoMetadata = async (videoId: string): Promise<VideoMetadata
     console.warn("YouTube Data API error:", e);
   }
 
-  // STRATEGY 2: Invidious API
   for (const instance of INVIDIOUS_INSTANCES) {
     try {
       const response = await fetch(`${instance}/api/v1/videos/${videoId}`);
@@ -135,7 +107,6 @@ export const fetchVideoMetadata = async (videoId: string): Promise<VideoMetadata
     }
   }
 
-  // STRATEGY 3: oEmbed
   try {
      const oembedUrl = `https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`;
      const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(oembedUrl)}`;
@@ -206,7 +177,6 @@ export const searchYouTubeVideos = async (query: string, categoryId?: string): P
       let apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video,channel&q=${encodeURIComponent(query)}&key=${apiKey}&maxResults=20`;
       
       if (categoryId) {
-          // If category is present, strict video search
           apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=${categoryId}&q=${encodeURIComponent(query)}&key=${apiKey}&maxResults=20`;
       }
 
@@ -231,7 +201,6 @@ export const searchYouTubeVideos = async (query: string, categoryId?: string): P
     console.warn("YouTube Search API error:", e);
   }
 
-  // Invidious Fallback (Category ID not strictly supported in basic search, using queries)
   for (const instance of INVIDIOUS_INSTANCES) {
     try {
       const response = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=all`);
@@ -263,21 +232,21 @@ export const fetchExploreFeed = async (category: 'HOME' | 'TRENDING' | 'GAMING' 
   switch (category) {
       case 'GAMING':
           query = 'gameplay review walkthrough -shorts';
-          categoryId = '20'; // Gaming ID
+          categoryId = '20'; 
           break;
       case 'TECH':
           query = 'tech review unboxing gadget -shorts';
-          categoryId = '28'; // Science & Tech
+          categoryId = '28'; 
           break;
       case 'MUSIC':
           query = 'official music video';
-          categoryId = '10'; // Music
+          categoryId = '10'; 
           break;
       case 'TRENDING':
           query = 'trending viral video now';
           break;
       case 'SUS':
-          query = 'hot tiktok compilation viral'; // Risky query
+          query = 'hot tiktok compilation viral'; 
           break;
       case 'HOME':
       default:
@@ -317,7 +286,6 @@ export const fetchChannelVideos = async (channelId: string, pageToken?: string):
         console.warn("Channel videos fetch failed:", e);
     }
     
-    // Invidious Fallback with mock pagination
     let pageNum = 1;
     if (pageToken && pageToken.startsWith('page:')) {
         pageNum = parseInt(pageToken.split(':')[1]) || 1;

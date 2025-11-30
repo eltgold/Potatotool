@@ -3,10 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RICETOOL - Ultimate YT Analytics</title>
+    <title>ricetool - ultimate yt analytics</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
             fontFamily: {
@@ -25,6 +26,7 @@
       /* FORCE COMIC SANS EVERYWHERE NO MATTER WHAT */
       * {
         font-family: 'Comic Sans MS', 'Comic Sans', 'Comic Neue', cursive, sans-serif !important;
+        text-transform: lowercase !important; /* DUMB MODE ACTIVATED */
       }
       
       body {
@@ -40,6 +42,9 @@
         background-position: center;
         background-attachment: fixed;
         background-repeat: no-repeat;
+      }
+      .dark .bg-bliss {
+         background-image: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('https://i.imgur.com/Z4ciR8m.jpeg');
       }
 
       /* Brutalist Scrollbar */
@@ -71,6 +76,9 @@
       }
       .hard-shadow-sm {
         box-shadow: 3px 3px 0px 0px #000;
+      }
+      .dark .hard-shadow, .dark .hard-shadow-sm {
+        box-shadow: 6px 6px 0px 0px #fff;
       }
       
       .border-thick {

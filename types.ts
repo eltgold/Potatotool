@@ -76,3 +76,32 @@ export interface SavedItem {
 }
 
 export type RiceTubeCategory = 'HOME' | 'TRENDING' | 'GAMING' | 'TECH' | 'MUSIC' | 'SUS';
+
+export interface VideoMetadata {
+  title: string | null;
+  description: string | null;
+  keywords: string[] | null;
+  channelId?: string;
+  channelTitle?: string;
+}
+
+export interface ChannelDetails {
+  title: string;
+  description: string;
+  customUrl?: string;
+  subscriberCount?: string;
+  videoCount?: string;
+  viewCount?: string;
+  thumbnailUrl?: string;
+}
+
+export interface SearchResult {
+  id: string;
+  type: 'video' | 'channel';
+  title: string;
+  thumbnail: string;
+  channelTitle: string;
+  publishedAt?: string;
+  description?: string;
+  isSus?: boolean;
+}
