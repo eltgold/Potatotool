@@ -2,20 +2,22 @@ import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { AnalysisResult, ChatMessage, BotAnalysisResult, VideoAnalysisResult } from '../types';
 import { ChannelDetails, SearchResult, VideoMetadata } from '../utils/youtube';
 
-// Helper to get the best available API Key dynamically
 const getAiClient = () => {
   const userKey = localStorage.getItem('ricetool_api_key');
-  // Prioritize User Key -> Env Key -> Hardcoded Fallback (from user history)
   const apiKey = userKey || process.env.API_KEY || "AIzaSyDVcFhERQvxsfbVsjYZSFqW--Kwj2-PMK8";
   return new GoogleGenAI({ apiKey });
 };
 
-// Helper to clean Markdown JSON code blocks
 const cleanJsonString = (str: string): string => {
   return str.replace(/```json\n?|```/g, '').trim();
 };
 
-// Timeout helper to prevent infinite hangs (30 seconds)
+const sanitizeString = (str?: string | null): string => {
+  if (!str) return "";
+  // Escape double quotes and backticks to prevent breaking the prompt template
+  return str.replace(/"/g, '\\"').replace(/`/g, '\\`');
+};
+
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number = 30000): Promise<T> => {
   return Promise.race([
     promise,
@@ -35,13 +37,14 @@ export const analyzeThumbnail = async (
 
   let contextPrompt = "";
   if (metadata?.title) {
-    contextPrompt += `\nVIDEO TITLE: "${metadata.title}"`;
+    contextPrompt += `\nVIDEO TITLE: "${sanitizeString(metadata.title)}"`;
   }
   if (metadata?.description) {
-    contextPrompt += `\nVIDEO DESCRIPTION: "${metadata.description.substring(0, 500)}..."`;
+    contextPrompt += `\nVIDEO DESCRIPTION: "${sanitizeString(metadata.description.substring(0, 500))}..."`;
   }
   if (metadata?.keywords && metadata.keywords.length > 0) {
-    contextPrompt += `\nVIDEO KEYWORDS/TAGS: "${metadata.keywords.join(", ")}"`;
+    const keywords = metadata.keywords.map(k => sanitizeString(k)).join(", ");
+    contextPrompt += `\nVIDEO KEYWORDS/TAGS: "${keywords}"`;
   }
 
   const normalPrompt = `
@@ -82,9 +85,7 @@ export const analyzeThumbnail = async (
        - YOU MUST CALCULATE THIS STRICTLY using this formula:
        - (Curiosity * 0.4) + (Emotion * 0.3) + (Clarity * 0.2) + (Text * 0.1)
        - Round the result to the nearest INTEGER (e.g. 9.5 rounds UP to 10).
-       - Example: Cur=10, Emo=9, Clar=9, Text=9 -> (4 + 2.7 + 1.8 + 0.9) = 9.4 -> 9.
-       - Example: Cur=10, Emo=10, Clar=10, Text=8 -> (4 + 3 + 2 + 0.8) = 9.8 -> 10.
-
+    
     OUTPUT INSTRUCTIONS:
       - Return ONLY raw JSON.
       - isSus: Boolean.
@@ -98,15 +99,8 @@ export const analyzeThumbnail = async (
       model: modelId,
       contents: {
         parts: [
-          {
-            inlineData: {
-              mimeType: mimeType,
-              data: imageBase64
-            }
-          },
-          {
-            text: normalPrompt
-          }
+          { inlineData: { mimeType: mimeType, data: imageBase64 } },
+          { text: normalPrompt }
         ]
       },
       config: {
@@ -156,10 +150,10 @@ export const analyzeVideoContext = async (
   const prompt = `
     Analyze this YouTube Video Metadata to provide a "Vibe Check" before we start chatting about it.
     
-    VIDEO TITLE: "${metadata.title}"
-    CHANNEL: "${metadata.channelTitle}"
-    DESCRIPTION: "${metadata.description?.substring(0, 1000)}"
-    KEYWORDS: "${metadata.keywords?.join(', ')}"
+    VIDEO TITLE: "${sanitizeString(metadata.title)}"
+    CHANNEL: "${sanitizeString(metadata.channelTitle)}"
+    DESCRIPTION: "${sanitizeString(metadata.description?.substring(0, 1000))}"
+    KEYWORDS: "${metadata.keywords ? metadata.keywords.map(k => sanitizeString(k)).join(', ') : ''}"
     
     Task:
     1. Summarize what this video is likely about in 1 snarky/funny sentence.
@@ -186,11 +180,9 @@ export const analyzeVideoContext = async (
         }
     }))) as GenerateContentResponse;
     if (!response.text) throw new Error("No response");
-    // Since strict JSON mode is off for search tools, we must parse carefully
     try {
         return JSON.parse(cleanJsonString(response.text));
     } catch (e) {
-        // Fallback if the AI returns text with JSON inside
         const match = response.text.match(/\{[\s\S]*\}/);
         if (match) return JSON.parse(match[0]);
         throw new Error("Failed to parse JSON from search result");
@@ -202,13 +194,10 @@ export const analyzeVideoContext = async (
 
 export interface ChatContext {
   type: 'RATER' | 'BOT_HUNTER' | 'VIDEO_CHAT';
-  // Rater Props
   imageBase64?: string | null;
   raterResult?: AnalysisResult | null;
-  // Bot Props
   botResult?: BotAnalysisResult | null;
   channelDetails?: ChannelDetails | null;
-  // Video Chat Props
   videoResult?: VideoAnalysisResult | null;
   videoMetadata?: VideoMetadata | null;
 }
@@ -225,10 +214,9 @@ export const sendChatMessage = async (
   let systemPromptText = "You are a Gen Z social media manager. Be helpful but snarky. ALWAYS be specific.";
   let initialUserParts = [];
 
-  // --- RATER CONTEXT ---
   if (context.type === 'RATER' && context.raterResult && context.imageBase64) {
-    const metaTitle = context.videoMetadata?.title ? `Title: "${context.videoMetadata.title}"` : "Title: Unknown";
-    const metaDesc = context.videoMetadata?.description ? `Desc: "${context.videoMetadata.description.substring(0, 300)}..."` : "";
+    const metaTitle = context.videoMetadata?.title ? `Title: "${sanitizeString(context.videoMetadata.title)}"` : "Title: Unknown";
+    const metaDesc = context.videoMetadata?.description ? `Desc: "${sanitizeString(context.videoMetadata.description.substring(0, 300))}..."` : "";
 
     const normalContext = `
       You are a sarcastic, funny YouTube expert named "RiceDroid".
@@ -237,16 +225,16 @@ export const sendChatMessage = async (
       ${metaTitle}
       ${metaDesc}
       Scores: ${JSON.stringify(context.raterResult.scores)}
-      Verdict: "${context.raterResult.summary}"
+      Verdict: "${sanitizeString(context.raterResult.summary)}"
       Key Fixes: ${JSON.stringify(context.raterResult.suggestions)}
       Sus Status: ${context.raterResult.isSus ? "YES" : "NO"}.
       
-      USER QUESTION: "${newMessage}"
+      USER QUESTION: "${sanitizeString(newMessage)}"
       
       CRITICAL INSTRUCTION: 
       - Do NOT give generic advice like "make it pop". 
-      - You MUST reference specific visual elements from the image (e.g. "That red font is unreadable", "The face on the left is blurry", "The high contrast works").
-      - Connect the metadata title to the image visuals. Does the image actually fit the title?
+      - You MUST reference specific visual elements from the image.
+      - Connect the metadata title to the image visuals.
       - Be brutally honest but precise. Use slang/internet humor.
     `;
     initialUserParts = [
@@ -254,51 +242,43 @@ export const sendChatMessage = async (
       { text: normalContext }
     ];
   
-  // --- BOT HUNTER CONTEXT ---
   } else if (context.type === 'BOT_HUNTER' && context.botResult && context.channelDetails) {
     systemPromptText = "You are a suspicious, cynical investigator named 'Deckard'. You hunt bots.";
     const botContext = `
       You are analyzing a YouTube Channel for bot activity.
       
       TARGET INFO:
-      Channel: "${context.channelDetails.title}"
+      Channel: "${sanitizeString(context.channelDetails.title)}"
       Subs: ${context.channelDetails.subscriberCount} | Videos: ${context.channelDetails.videoCount}
       
       ANALYSIS FINDINGS:
       Verdict: ${context.botResult.verdict} (${context.botResult.botScore}% Bot Probability)
       Specific Evidence Found: ${JSON.stringify(context.botResult.evidence)}
-      Summary: "${context.botResult.summary}"
+      Summary: "${sanitizeString(context.botResult.summary)}"
       
-      USER QUESTION: "${newMessage}"
-      
-      CRITICAL INSTRUCTION:
-      - You MUST quote the specific evidence found. Don't just say "it looks automated". Say "The titles are clearly templated" or "Uploading 10 videos a day is impossible for a human".
-      - Be cynical. If it's a bot, mock its soulless nature. 
-      - Reference the subscriber count vs video count ratio if relevant.
+      USER QUESTION: "${sanitizeString(newMessage)}"
     `;
     initialUserParts = [
       { text: botContext }
     ];
 
-  // --- VIDEO CHAT CONTEXT ---
   } else if (context.type === 'VIDEO_CHAT' && context.videoMetadata) {
       systemPromptText = "You are 'CouchBuddy', a friend watching this video with the user.";
       const vidContext = `
-        We are "watching" a YouTube Video via its metadata (we can't see the pixels, but we know the content).
-        Title: "${context.videoMetadata.title}"
-        Channel: "${context.videoMetadata.channelTitle}"
-        Description: "${context.videoMetadata.description?.substring(0, 800)}"
+        We are "watching" a YouTube Video via its metadata.
+        Title: "${sanitizeString(context.videoMetadata.title)}"
+        Channel: "${sanitizeString(context.videoMetadata.channelTitle)}"
+        Description: "${sanitizeString(context.videoMetadata.description?.substring(0, 800))}"
         Tags: "${context.videoMetadata.keywords?.join(', ')}"
         
         Initial Vibe Check: ${context.videoResult?.summary}
         Tone: ${context.videoResult?.tone}
 
-        User Input: "${newMessage}"
+        User Input: "${sanitizeString(newMessage)}"
 
         Instructions:
         - Act like you are watching it right now.
-        - Since you can't see the frames, assume content based on the Title/Desc/Tags.
-        - If the user asks about a specific visual moment you can't see, joke about it or make an educated guess based on the description, or ask them to describe it.
+        - If the user asks about a specific visual moment you can't see, joke about it or make an educated guess based on description.
         - Be funny, opinionated, and use internet slang.
       `;
       initialUserParts = [
@@ -312,11 +292,9 @@ export const sendChatMessage = async (
       parts: initialUserParts
     });
   } else {
-    // Reconstruct history
     let contextMsg = "";
-    
     if (context.type === 'RATER' && context.raterResult) {
-       contextMsg = `Recall: We are analyzing the thumbnail for "${context.videoMetadata?.title || 'Unknown Video'}". You scored it ${context.raterResult.scores.overall}/10.`;
+       contextMsg = `Recall: Analyzing thumbnail "${sanitizeString(context.videoMetadata?.title || 'Unknown Video')}". Score: ${context.raterResult.scores.overall}/10.`;
        contents.push({
         role: 'user',
         parts: [
@@ -325,17 +303,11 @@ export const sendChatMessage = async (
         ]
       });
     } else if (context.type === 'BOT_HUNTER' && context.botResult) {
-       contextMsg = `Recall: Analyzing channel "${context.channelDetails?.title}". Verdict: ${context.botResult.verdict}.`;
-       contents.push({
-        role: 'user',
-        parts: [{ text: contextMsg }]
-      });
+       contextMsg = `Recall: Analyzing channel "${sanitizeString(context.channelDetails?.title)}". Verdict: ${context.botResult.verdict}.`;
+       contents.push({ role: 'user', parts: [{ text: contextMsg }]});
     } else if (context.type === 'VIDEO_CHAT' && context.videoMetadata) {
-        contextMsg = `Recall: Discussing video "${context.videoMetadata.title}".`;
-        contents.push({
-            role: 'user',
-            parts: [{ text: contextMsg }]
-        });
+        contextMsg = `Recall: Discussing video "${sanitizeString(context.videoMetadata.title)}".`;
+        contents.push({ role: 'user', parts: [{ text: contextMsg }]});
     }
 
     history.forEach(msg => {
@@ -352,7 +324,6 @@ export const sendChatMessage = async (
   }
 
   try {
-    // Enable tools for all chat modes so it can lookup info if needed
     const response = (await withTimeout(ai.models.generateContent({
       model: modelId,
       contents: contents,
@@ -380,16 +351,16 @@ export const analyzeBotProbability = async (
     Analyze this YouTube channel data to detect if it is a HUMAN, a CYBORG (Human using Heavy AI tools), or an NPC FARM (Fully Automated Bot).
     
     CHANNEL INFO:
-    Name: ${channelDetails.title}
-    Description: ${channelDetails.description}
+    Name: ${sanitizeString(channelDetails.title)}
+    Description: ${sanitizeString(channelDetails.description)}
     Subs: ${channelDetails.subscriberCount}
     Videos: ${channelDetails.videoCount}
     
     RECENT VIDEOS (Last 15):
-    ${videos.map(v => `- Title: "${v.title}" | Date: ${v.publishedAt}`).join('\n')}
+    ${videos.map(v => `- Title: "${sanitizeString(v.title)}" | Date: ${v.publishedAt}`).join('\n')}
     
     DETECT THESE PATTERNS:
-    1. **Title Templating**: Are titles identical with 1 variable changed? (e.g. "Skibidi vs Creeper", "Skibidi vs Zombie").
+    1. **Title Templating**: Are titles identical with 1 variable changed?
     2. **Upload Spam**: Are they uploading 5+ times a day?
     3. **Keyword Salad**: Does the description look like SEO vomit?
     4. **Low Effort**: Does it look like Reddit TTS or compilation spam?

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { extractVideoId, blobToBase64, fetchVideoMetadata, searchYouTubeVideos, fetchChannelLatestVideos, SearchResult, fetchChannelDetails, extractChannelId, ChannelDetails, fetchExploreFeed, VideoMetadata } from './utils/youtube';
+import { extractVideoId, blobToBase64, fetchVideoMetadata, searchYouTubeVideos, fetchChannelVideos, SearchResult, fetchChannelDetails, extractChannelId, ChannelDetails, fetchExploreFeed, VideoMetadata } from './utils/youtube';
 import { analyzeThumbnail, sendChatMessage, analyzeBotProbability, analyzeVideoContext } from './services/geminiService';
-import { AppState, AnalysisResult, ChatMessage, ChangelogEntry, BotAnalysisResult, SavedItem, SavedItemType, VideoAnalysisResult } from './types';
+import { AppState, AnalysisResult, ChatMessage, ChangelogEntry, BotAnalysisResult, SavedItem, VideoAnalysisResult } from './types';
 import { AnalysisChart } from './components/AnalysisChart';
 import { ScoreCard } from './components/ScoreCard';
 import { 
@@ -23,7 +23,6 @@ import {
   HardDrive,
   ShoppingBag,
   Check,
-  Zap,
   Hammer,
   FileText,
   Settings,
@@ -33,11 +32,32 @@ import {
   EyeOff,
   ArrowLeft,
   Link2,
-  FlaskConical
+  HelpCircle
 } from 'lucide-react';
 import clsx from 'clsx';
 
 const CHANGELOG_DATA: ChangelogEntry[] = [
+  {
+      version: "v2.22",
+      date: "2025-12-13",
+      title: "The Manual Update",
+      changes: [
+          "Removed Experimental Toggle (Ask Video is open for all).",
+          "Added HELP button in header.",
+          "Added Instruction Manual for new users.",
+          "RiceDroid is still crying."
+      ]
+  },
+  {
+      version: "v2.21",
+      date: "2025-12-12",
+      title: "The Crying Update",
+      changes: [
+          "Updated Background to Windows XP Bliss Crying Cat.",
+          "RiceDroid now has a face (and it is crying).",
+          "Maximum emotional damage achieved."
+      ]
+  },
   {
       version: "v2.20",
       date: "2025-12-12",
@@ -137,7 +157,6 @@ const CHANGELOG_DATA: ChangelogEntry[] = [
 type ActiveTab = 'RATER' | 'BOT_HUNTER' | 'VIDEO_CHAT';
 type StoreView = 'SEARCH' | 'CHANNEL';
 
-// --- CUSTOM COMPONENTS ---
 const SmashLogo = () => (
     <div className="relative group w-10 h-10 flex items-center justify-center cursor-pointer">
         <div className="absolute inset-0 bg-red-600 rounded-xl border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] group-hover:translate-y-1 group-hover:shadow-none transition-all duration-100 flex items-center justify-center overflow-hidden">
@@ -155,12 +174,17 @@ const Tape = ({ className }: { className?: string }) => (
     <div className={clsx("absolute w-24 h-8 bg-white/60 border border-black/10 rotate-[-3deg] backdrop-blur-sm shadow-sm z-20", className)}></div>
 );
 
+const RiceDroidAvatar = () => (
+    <div className="w-10 h-10 rounded-full border-[3px] border-black overflow-hidden bg-white shrink-0 hard-shadow-sm">
+        <img src="https://i.imgur.com/gL1bk4m.png" alt="RiceDroid" className="w-full h-full object-cover scale-110" />
+    </div>
+);
+
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('RATER');
   const [url, setUrl] = useState('');
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
   
-  // Thumb Rater State
   const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [videoTitle, setVideoTitle] = useState<string | null>(null);
@@ -170,7 +194,6 @@ const App: React.FC = () => {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
-  // Store / Search State
   const [showStoreModal, setShowStoreModal] = useState(false);
   const [storeView, setStoreView] = useState<StoreView>('SEARCH');
   const [storeQuery, setStoreQuery] = useState('');
@@ -181,31 +204,24 @@ const App: React.FC = () => {
   const [revealedItems, setRevealedItems] = useState<Set<string>>(new Set());
   const [storeNextPageToken, setStoreNextPageToken] = useState<string | undefined>(undefined);
 
-  // Bot Hunter State
   const [botResult, setBotResult] = useState<BotAnalysisResult | null>(null);
   const [analyzingChannel, setAnalyzingChannel] = useState<ChannelDetails | null>(null);
 
-  // Video Chat State
   const [videoAnalysisResult, setVideoAnalysisResult] = useState<VideoAnalysisResult | null>(null);
   const [currentVideoMetadata, setCurrentVideoMetadata] = useState<VideoMetadata | null>(null);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   
-  // UI State
   const [showImageWarning, setShowImageWarning] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [showSusContent, setShowSusContent] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showSavedList, setShowSavedList] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   
-  // Settings State
   const [apiKeyInput, setApiKeyInput] = useState('');
-  const [showExperimental, setShowExperimental] = useState(false);
-
-  // Storage State
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   
-  // Chat State
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -214,15 +230,13 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
-  // Derived state
-  const isCelebrationMode = result?.scores.overall === 10;
+  const isCelebrationMode = result?.scores?.overall === 10;
   const isSusDetected = result?.isSus;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, isChatLoading]);
 
-  // Load saved items and settings from local storage on mount
   useEffect(() => {
     try {
       const storedItems = localStorage.getItem('thumb_rate_saved');
@@ -233,16 +247,11 @@ const App: React.FC = () => {
       if (storedKey) {
         setApiKeyInput(storedKey);
       }
-      const storedExp = localStorage.getItem('ricetool_experimental');
-      if (storedExp) {
-        setShowExperimental(JSON.parse(storedExp));
-      }
     } catch (e) {
       console.error("Failed to load saved items", e);
     }
   }, []);
 
-  // Auto-fetch explore feed when Store is opened
   useEffect(() => {
       if (showStoreModal && storeResults.length === 0 && storeView === 'SEARCH') {
           setIsStoreSearching(true);
@@ -253,16 +262,6 @@ const App: React.FC = () => {
       }
   }, [showStoreModal]);
 
-  const toggleExperimental = () => {
-      const newValue = !showExperimental;
-      setShowExperimental(newValue);
-      localStorage.setItem('ricetool_experimental', JSON.stringify(newValue));
-      if (!newValue && activeTab === 'VIDEO_CHAT') {
-          setActiveTab('RATER');
-          resetAnalysis();
-      }
-  };
-
   const saveApiKey = () => {
     const key = apiKeyInput.trim();
     if (key) {
@@ -271,7 +270,6 @@ const App: React.FC = () => {
       localStorage.removeItem('ricetool_api_key');
     }
     setShowSettingsModal(false);
-    // Reload feed if store is open to apply new key
     if (showStoreModal) {
       setStoreResults([]);
       setIsStoreSearching(true);
@@ -310,7 +308,6 @@ const App: React.FC = () => {
     setAppState(AppState.LOADING_IMAGE);
     setIsMetadataLoading(true);
     
-    // Non-blocking metadata fetch
     fetchVideoMetadata(videoId).then(meta => {
       setVideoTitle(meta.title || "Unknown Title");
       setVideoDesc(meta.description || "No description found.");
@@ -351,13 +348,12 @@ const App: React.FC = () => {
   const runBotAnalysis = async (channelId: string) => {
     setAppState(AppState.ANALYZING);
     setBotResult(null);
-    
     try {
       const channelData = await fetchChannelDetails(channelId);
       if (!channelData) throw new Error("Could not find channel");
       setAnalyzingChannel(channelData);
 
-      const videos = await fetchChannelLatestVideos(channelId);
+      const videos = await fetchChannelVideos(channelId);
       if (videos.length === 0) throw new Error("No videos found");
 
       const result = await analyzeBotProbability(channelData, videos);
@@ -373,7 +369,6 @@ const App: React.FC = () => {
   const runVideoChatInit = async (videoId: string) => {
       setAppState(AppState.ANALYZING);
       setActiveVideoId(videoId);
-      
       try {
           const meta = await fetchVideoMetadata(videoId);
           if (!meta.title) throw new Error("Could not fetch metadata");
@@ -382,8 +377,6 @@ const App: React.FC = () => {
           const result = await analyzeVideoContext(meta, videoId);
           setVideoAnalysisResult(result);
           setAppState(AppState.SUCCESS);
-          
-          // Seed initial chat
           setChatHistory([{
               role: 'model',
               text: `Yo! I'm watching "${meta.title}" with you. ${result.summary}`
@@ -418,7 +411,6 @@ const App: React.FC = () => {
             setAppState(AppState.ERROR);
         }
     } else {
-      // BOT HUNTER
       resetAnalysis();
       let channelId = extractChannelId(input);
       const videoId = extractVideoId(input);
@@ -445,7 +437,6 @@ const App: React.FC = () => {
     setStoreView('SEARCH');
     setIsStoreSearching(true);
     setStoreResults([]);
-    
     try {
       const results = await searchYouTubeVideos(storeQuery);
       setStoreResults(results);
@@ -469,16 +460,14 @@ const App: React.FC = () => {
 
   const handleItemClick = async (item: SearchResult) => {
     if (item.type === 'channel') {
-        // Switch to Channel View
         setSelectedChannel(item);
         setStoreView('CHANNEL');
         setIsStoreSearching(true);
-        setStoreResults([]); // Clear current list to show loading
+        setStoreResults([]); 
         setStoreNextPageToken(undefined);
         try {
-            const channelVideos = await fetchChannelLatestVideos(item.id);
+            const channelVideos = await fetchChannelVideos(item.id);
             setStoreResults(channelVideos);
-            // Invidious might give us a token for next page if supported
             setStoreNextPageToken("page:2"); 
         } catch (e) {
             console.error(e);
@@ -486,21 +475,24 @@ const App: React.FC = () => {
             setIsStoreSearching(false);
         }
     } else {
-        // Copy Video Link
         handleCopy(item.id, 'video');
     }
   };
 
   const handleLoadMore = async () => {
       if (!selectedChannel || !storeNextPageToken) return;
-      
       try {
-          // This calls fetchChannelVideos internally with pagination
-          // For now, simple mock pagination with invidious
-          const nextPage = parseInt(storeNextPageToken.split(':')[1]);
-          const videos = await fetchChannelLatestVideos(selectedChannel.id); // In real implementation we pass pageToken
+          const videos = await fetchChannelVideos(selectedChannel.id, storeNextPageToken);
           setStoreResults(prev => [...prev, ...videos]);
-          setStoreNextPageToken(`page:${nextPage + 1}`);
+          if (storeNextPageToken.startsWith('page:')) {
+             const pageNum = parseInt(storeNextPageToken.split(':')[1]);
+             setStoreNextPageToken(`page:${pageNum + 1}`);
+          } else {
+             // For official API, fetchChannelVideos should return next token but here we simplified.
+             // In full implementation, we'd need to return { videos, nextPageToken } from util.
+             // For now assume Invidious style for infinite scroll simulation
+             setStoreNextPageToken(`page:${Date.now()}`); 
+          }
       } catch (e) {
           console.error(e);
       }
@@ -594,8 +586,6 @@ const App: React.FC = () => {
     }
   };
 
-  // --- SAVE SYSTEM ---
-
   const prepareSaveItem = (): SavedItem | null => {
     if (activeTab === 'RATER' && result && imageBase64) {
       return {
@@ -617,7 +607,6 @@ const App: React.FC = () => {
         channelDetails: analyzingChannel
       };
     }
-    // Note: Video Chat saving not implemented in this version to save space/complexity
     return null;
   };
 
@@ -701,21 +690,16 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-dots text-black font-sans pb-20 relative overflow-hidden">
+    <div className="min-h-screen bg-bliss text-black font-sans pb-20 relative overflow-hidden">
       
       {isCelebrationMode && (
         <div className="fixed inset-0 pointer-events-none z-10 opacity-30 bg-[url('https://media.giphy.com/media/26tOZ42Mg6pbTUPDa/giphy.gif')] bg-repeat mix-blend-screen"></div>
       )}
       
-      {/* --- MODALS (BRUTALIST STYLE) --- */}
-      
-      {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4 font-sans">
            <div className="relative max-w-lg w-full">
-             {/* Wrapper for Rotation to avoid Scroll Clipping */}
              <div className="absolute inset-0 bg-white border-[3px] border-black hard-shadow rotate-1 pointer-events-none"></div>
-             
              <div className="relative bg-white border-[3px] border-black p-6 hard-shadow flex flex-col z-10">
                <Tape className="-top-4 left-1/2 -translate-x-1/2" />
                <div className="flex justify-between items-center mb-6 border-b-[3px] border-black pb-4">
@@ -726,15 +710,12 @@ const App: React.FC = () => {
                      <X className="w-5 h-5" />
                   </button>
                </div>
-               
                <div className="space-y-6">
-                  {/* API KEY SECTION */}
                   <div className="space-y-4">
                       <h3 className="font-bold text-sm uppercase tracking-widest border-b-2 border-black pb-1">API Access</h3>
                       <p className="font-bold text-xs text-zinc-600">
-                        Add a <span className="bg-[#fde047] px-1 border border-black text-black">Custom API Key</span> to enable better search, channel stats, and deeper analysis.
+                        Add a <span className="bg-[#fde047] px-1 border border-black text-black">Custom API Key</span> (YouTube Data API v3) to enable better search, channel stats, and deeper analysis.
                       </p>
-                      
                       <div className="flex gap-2">
                           <div className="relative flex-1">
                               <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
@@ -756,39 +737,73 @@ const App: React.FC = () => {
                            </button>
                       </div>
                   </div>
-
-                  {/* EXPERIMENTAL SECTION */}
-                  <div className="space-y-4">
-                       <h3 className="font-bold text-sm uppercase tracking-widest border-b-2 border-black pb-1">Experiments</h3>
-                       <div className="flex items-center justify-between bg-zinc-50 p-3 border-2 border-black">
-                           <div className="flex items-center gap-2">
-                               <FlaskConical className="w-5 h-5 text-purple-600" />
-                               <div className="flex flex-col">
-                                   <span className="font-bold text-sm uppercase">Beta Features</span>
-                                   <span className="text-[10px] font-bold text-zinc-500">Enable "Ask Video" & new tools</span>
-                               </div>
-                           </div>
-                           <button 
-                               onClick={toggleExperimental}
-                               className={clsx(
-                                   "w-12 h-6 border-[3px] border-black rounded-full relative transition-colors",
-                                   showExperimental ? "bg-[#a78bfa]" : "bg-zinc-300"
-                               )}
-                           >
-                               <div className={clsx(
-                                   "absolute top-[-3px] w-6 h-6 bg-white border-[3px] border-black rounded-full transition-all",
-                                   showExperimental ? "left-[calc(100%-1.2rem)]" : "left-[-3px]"
-                               )}></div>
-                           </button>
-                       </div>
-                  </div>
                </div>
              </div>
            </div>
         </div>
       )}
 
-      {/* Save Modal */}
+      {showHelp && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4 font-sans">
+           <div className="relative max-w-2xl w-full rotate-[-1deg] max-h-[85vh]">
+             <div className="bg-white border-[3px] border-black w-full h-full flex flex-col hard-shadow overflow-hidden">
+                <Tape className="-top-4 right-10 rotate-[3deg]" />
+                <div className="bg-[#a78bfa] p-4 border-b-[3px] border-black flex justify-between items-center shrink-0 z-10">
+                   <h2 className="text-xl font-bold text-black uppercase tracking-tight flex items-center gap-2">
+                      <HelpCircle className="w-6 h-6" /> Instruction Manual
+                   </h2>
+                   <button onClick={() => setShowHelp(false)} className="p-2 bg-[#ef4444] hover:bg-red-600 border-2 border-black text-white font-bold transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-[2px]">
+                      <X className="w-5 h-5" />
+                   </button>
+                </div>
+                
+                <div className="p-6 bg-dots overflow-y-auto space-y-8">
+                   <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                         <div className="bg-[#f9a8d4] p-1 border-2 border-black rotate-[-2deg] font-bold text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">Thumb Rater</div>
+                         <h3 className="font-bold text-lg uppercase">The Main Event</h3>
+                      </div>
+                      <p className="text-sm font-bold pl-4 border-l-4 border-black">
+                         Paste a YouTube video link. The AI will steal the thumbnail and metadata, then roast it based on Clarity, Curiosity, and Emotion. It gives you a score out of 10.
+                      </p>
+                   </div>
+                   <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                         <div className="bg-[#67e8f9] p-1 border-2 border-black rotate-[1deg] font-bold text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">Bot Hunter</div>
+                         <h3 className="font-bold text-lg uppercase">NPC Detector</h3>
+                      </div>
+                      <p className="text-sm font-bold pl-4 border-l-4 border-black">
+                         Paste a Channel link (or a video link from that channel). The AI analyzes upload frequency, titles, and descriptions to calculate a "Bot Probability".
+                      </p>
+                   </div>
+                   <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                         <div className="bg-[#a78bfa] p-1 border-2 border-black rotate-[-1deg] font-bold text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] relative">
+                             Ask Video
+                             <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[8px] px-1 border border-black">BETA</span>
+                         </div>
+                         <h3 className="font-bold text-lg uppercase">Couch Potato</h3>
+                      </div>
+                      <p className="text-sm font-bold pl-4 border-l-4 border-black">
+                         Paste a video link. The AI "watches" the video (using Google Search & Metadata) and chats with you about it. You can ask "What is this about?" or "Is it clickbait?".
+                      </p>
+                   </div>
+                   <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                         <div className="bg-[#fde047] p-1 border-2 border-black rotate-[2deg] font-bold text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">Store & Vault</div>
+                         <h3 className="font-bold text-lg uppercase">Tools</h3>
+                      </div>
+                      <ul className="list-disc pl-8 text-sm font-bold">
+                         <li><span className="bg-black text-white px-1">STORE</span> Search for videos/channels to copy links from.</li>
+                         <li><span className="bg-black text-white px-1">VAULT</span> Save your best analysis results locally.</li>
+                      </ul>
+                   </div>
+                </div>
+             </div>
+           </div>
+        </div>
+      )}
+
       {showSaveModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4 font-sans">
            <div className="bg-white border-[3px] border-black p-6 max-w-sm w-full hard-shadow rounded-none rotate-1">
@@ -807,10 +822,8 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Store Modal */}
       {showStoreModal && (
         <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/50 p-4 font-sans">
-           {/* Rotation Wrapper */}
            <div className="relative w-full max-w-5xl rotate-[-1deg] max-h-[85vh]">
               <div className="bg-white border-[3px] border-black w-full h-full flex flex-col hard-shadow overflow-hidden">
                   <Tape className="-top-4 right-10 rotate-[2deg]" />
@@ -917,7 +930,6 @@ const App: React.FC = () => {
                                   </button>
                               )}
                               
-                              {/* EXPLICIT COPY BUTTON */}
                               <button
                                 onClick={(e) => handleCopy(item.id, item.type, e)}
                                 className="absolute bottom-2 right-2 bg-white border-2 border-black p-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-y-0.5 z-30 transition-all active:bg-zinc-200"
@@ -937,7 +949,6 @@ const App: React.FC = () => {
                         </div>
                     )})}
                     </div>
-                     {/* LOAD MORE BUTTON */}
                      {storeNextPageToken && storeView === 'CHANNEL' && !isStoreSearching && (
                           <div className="mt-8 flex justify-center pb-8">
                               <button 
@@ -954,7 +965,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Saved List Modal (The Vault) */}
       {showSavedList && (
         <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/50 p-4 font-sans">
            <div className="relative w-full max-w-3xl rotate-1 max-h-[85vh]">
@@ -1012,7 +1022,6 @@ const App: React.FC = () => {
                               </div>
                             </div>
                           )}
-
                           <button onClick={() => loadSavedItem(item)} className="mt-auto w-full bg-black text-white hover:bg-zinc-800 font-bold uppercase py-3 text-xs transition-colors border-2 border-transparent shadow-[3px_3px_0px_0px_rgba(255,255,255,1)]">
                             LOAD DATA
                           </button>
@@ -1025,7 +1034,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Changelog Modal */}
       {showChangelog && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4 font-sans">
            <div className="relative w-full max-w-2xl rotate-1 max-h-[80vh]">
@@ -1059,7 +1067,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Warning Popup */}
       {showImageWarning && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 font-sans">
           <div className="bg-[#fde047] border-[3px] border-black p-8 max-w-md hard-shadow relative rotate-2">
@@ -1079,11 +1086,9 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Hidden File Inputs */}
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload}/>
       <input type="file" ref={importInputRef} className="hidden" accept=".json" onChange={handleImportJSON} />
 
-      {/* --- HEADER --- */}
       <header className="bg-[#fde047] border-b-[3px] border-black sticky top-0 z-50 font-sans shadow-md">
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer group" onClick={resetAnalysis}>
@@ -1100,6 +1105,9 @@ const App: React.FC = () => {
             <button onClick={() => setShowSavedList(true)} className="flex items-center gap-2 text-xs font-bold text-black bg-white hover:bg-zinc-100 px-4 py-2 border-2 border-black hard-shadow-sm active:translate-y-0.5 active:shadow-none transition-all uppercase">
                 <FolderOpen className="w-4 h-4" /> VAULT
             </button>
+            <button onClick={() => setShowHelp(true)} className="p-2 bg-[#a78bfa] text-black hover:bg-purple-300 border-2 border-black hard-shadow-sm active:translate-y-0.5 active:shadow-none transition-all">
+                <HelpCircle className="w-4 h-4" />
+            </button>
             <button onClick={() => setShowSettingsModal(true)} className="p-2 bg-black text-white hover:bg-zinc-800 border-2 border-white hard-shadow-sm active:translate-y-0.5 active:shadow-none transition-all">
                 <Settings className="w-4 h-4" />
             </button>
@@ -1109,7 +1117,6 @@ const App: React.FC = () => {
 
       <main className="max-w-7xl mx-auto px-4 py-12 relative z-10 font-sans">
         
-        {/* TAB SWITCHER */}
         <div className="flex justify-center mb-16">
             <div className="bg-white p-2 border-[3px] border-black hard-shadow rotate-1 inline-flex gap-3 relative flex-wrap justify-center">
                 <Tape className="-top-4 right-1/2 translate-x-1/2 rotate-[-1deg] w-32" />
@@ -1131,22 +1138,19 @@ const App: React.FC = () => {
                 >
                     Bot Hunter
                 </button>
-                {showExperimental && (
-                    <button 
-                        onClick={() => { setActiveTab('VIDEO_CHAT'); resetAnalysis(); }}
-                        className={clsx(
-                            "px-6 py-3 text-lg font-bold uppercase transition-all border-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 relative",
-                            activeTab === 'VIDEO_CHAT' ? "bg-[#a78bfa] text-black border-black" : "bg-zinc-100 text-zinc-400 border-transparent hover:text-black hover:border-black"
-                        )}
-                    >
-                        Ask Video
-                        <span className="absolute -top-3 -right-3 bg-red-500 text-white text-[10px] px-1.5 py-0.5 font-bold border-2 border-black rotate-12 shadow-sm">BETA</span>
-                    </button>
-                )}
+                <button 
+                    onClick={() => { setActiveTab('VIDEO_CHAT'); resetAnalysis(); }}
+                    className={clsx(
+                        "px-6 py-3 text-lg font-bold uppercase transition-all border-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 relative",
+                        activeTab === 'VIDEO_CHAT' ? "bg-[#a78bfa] text-black border-black" : "bg-zinc-100 text-zinc-400 border-transparent hover:text-black hover:border-black"
+                    )}
+                >
+                    Ask Video
+                    <span className="absolute -top-3 -right-3 bg-red-500 text-white text-[10px] px-1.5 py-0.5 font-bold border-2 border-black rotate-12 shadow-sm">BETA</span>
+                </button>
             </div>
         </div>
 
-        {/* HERO TEXT */}
         <div className="text-center mb-12 relative">
             <h1 className="text-6xl md:text-8xl font-bold text-black uppercase tracking-tighter leading-none relative z-10 drop-shadow-xl">
                 {activeTab === 'RATER' && (
@@ -1173,7 +1177,6 @@ const App: React.FC = () => {
             </p>
         </div>
 
-        {/* INPUT SECTION */}
         <div className="max-w-3xl mx-auto mb-16 relative">
           <div className="absolute -top-6 -left-6 bg-black text-white px-3 py-1 font-bold text-xs rotate-[-5deg] border-2 border-white shadow-md z-10">
               {activeTab === 'RATER' ? "PASTE IT" : activeTab === 'BOT_HUNTER' ? "EXPOSE THEM" : "WATCH IT"}
@@ -1199,7 +1202,6 @@ const App: React.FC = () => {
                  {activeTab === 'RATER' ? "JUDGE ME" : activeTab === 'BOT_HUNTER' ? "SCAN" : "CHAT"}
                </button>
             </div>
-            {/* Corner decorations */}
             <div className="absolute -top-1 -right-1 w-2 h-2 bg-black"></div>
             <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-black"></div>
           </div>
@@ -1219,10 +1221,7 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
-
-        {/* --- MAIN CONTENT AREA --- */}
         
-        {/* Loading State */}
         {appState === AppState.LOADING_IMAGE && (
            <div className="flex flex-col items-center justify-center py-20 animate-slide-up">
               <div className="w-20 h-20 bg-white border-[3px] border-black flex items-center justify-center animate-spin hard-shadow mb-8">
@@ -1232,7 +1231,6 @@ const App: React.FC = () => {
            </div>
         )}
 
-        {/* Analyzing State */}
         {appState === AppState.ANALYZING && (
            <div className="flex flex-col items-center justify-center py-20 animate-slide-up">
               <div className="w-24 h-24 bg-[#fde047] border-[3px] border-black flex items-center justify-center hard-shadow mb-8 rounded-full">
@@ -1245,14 +1243,12 @@ const App: React.FC = () => {
            </div>
         )}
 
-        {/* RATER RESULTS */}
         {appState === AppState.READY_TO_ANALYZE && activeTab === 'RATER' && thumbnailSrc && (
           <div className="max-w-4xl mx-auto animate-slide-up">
              <div className="bg-white border-[3px] border-black p-2 hard-shadow rotate-1 mb-8 relative group">
                 <Tape className="-top-3 left-1/2 -translate-x-1/2" />
                 <div className="relative aspect-video bg-black border-2 border-black overflow-hidden">
                    <img src={thumbnailSrc} className="w-full h-full object-contain" />
-                   {/* Stolen Data Receipt */}
                    <div className="absolute top-4 left-4 max-w-xs bg-white border-[3px] border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rotate-[-2deg] opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
                       <div className="text-center border-b-2 border-black border-dashed pb-2 mb-2">
                         <h3 className="text-xl font-bold uppercase">STOLEN DATA</h3>
@@ -1280,14 +1276,9 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* RATER SUCCESS */}
         {appState === AppState.SUCCESS && activeTab === 'RATER' && result && (
           <div className="animate-slide-up space-y-12">
-             
-             {/* Main Score & Chart */}
              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                
-                {/* Left: Image & Receipt */}
                 <div className="lg:col-span-5 space-y-6">
                    <div className="bg-white border-[3px] border-black p-2 hard-shadow rotate-[-1deg] relative">
                       <Tape className="-top-3 -right-2 rotate-[4deg]" />
@@ -1302,8 +1293,6 @@ const App: React.FC = () => {
                          )}
                       </div>
                    </div>
-
-                   {/* Metadata Receipt (Always visible now) */}
                    <div className="bg-[#fff1f2] border-[3px] border-black p-4 relative shadow-sm mx-4">
                        <div className="w-4 h-4 rounded-full bg-black absolute -top-2 left-1/2 -translate-x-1/2"></div>
                        <h3 className="font-bold text-center border-b-[3px] border-black pb-2 mb-3 text-lg uppercase">Evidence</h3>
@@ -1319,7 +1308,6 @@ const App: React.FC = () => {
                    </div>
                 </div>
 
-                {/* Right: Scores */}
                 <div className="lg:col-span-7">
                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                       <ScoreCard label="CLARITY" score={result.scores.clarity} rotation="rotate-[-2deg]" />
@@ -1329,13 +1317,10 @@ const App: React.FC = () => {
                    </div>
                    
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      {/* Chart */}
                       <div className="aspect-square relative">
                          <div className="absolute -top-6 left-0 bg-black text-white px-3 py-1 font-bold rotate-[-3deg] z-10 text-sm border-2 border-white shadow-md">PENTAGON OF PAIN</div>
                          <AnalysisChart scores={result.scores} />
                       </div>
-
-                      {/* Overall Score */}
                       <div className="flex flex-col justify-center">
                          <div className="bg-white border-[3px] border-black p-6 hard-shadow flex flex-col items-center justify-center h-full relative rotate-1">
                             <Tape className="-top-3 right-10 rotate-[2deg]" />
@@ -1361,13 +1346,11 @@ const App: React.FC = () => {
                 </div>
              </div>
 
-             {/* Summary & Suggestions */}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                  <div className="bg-[#fde047] border-[3px] border-black p-6 hard-shadow relative">
                     <div className="absolute -top-4 -left-2 bg-black text-white px-4 py-1 font-bold rotate-[-2deg] border-2 border-white shadow-md text-lg">THE ROAST</div>
                     <p className="text-xl font-bold leading-relaxed mt-4">"{result.summary}"</p>
                  </div>
-                 
                  <div className="bg-white border-[3px] border-black p-6 hard-shadow relative">
                     <div className="absolute -top-4 -left-2 bg-[#67e8f9] text-black px-4 py-1 font-bold rotate-[1deg] border-[3px] border-black shadow-sm text-lg uppercase">Fix It</div>
                     <ul className="mt-4 space-y-3">
@@ -1381,7 +1364,6 @@ const App: React.FC = () => {
                  </div>
              </div>
              
-             {/* Chat Room */}
              <div className="border-[3px] border-black bg-white hard-shadow relative flex flex-col h-[500px]">
                  <div className="bg-[#f9a8d4] p-4 border-b-[3px] border-black flex justify-between items-center">
                     <div className="flex items-center gap-2">
@@ -1389,29 +1371,34 @@ const App: React.FC = () => {
                        <h3 className="font-bold text-xl uppercase tracking-tight">The Roast Room</h3>
                     </div>
                  </div>
-                 
                  <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-dots">
                     {chatHistory.map((msg, i) => (
-                       <div key={i} className={clsx("flex flex-col max-w-[80%]", msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start")}>
-                          <div className={clsx(
-                             "p-3 border-[3px] border-black font-bold text-sm shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]",
-                             msg.role === 'user' ? "bg-[#67e8f9] rounded-tl-xl rounded-bl-xl rounded-tr-xl" : "bg-white rounded-tr-xl rounded-br-xl rounded-tl-xl"
-                          )}>
-                             {msg.text}
+                       <div key={i} className={clsx("flex items-end gap-2 max-w-[85%]", msg.role === 'user' ? "ml-auto flex-row-reverse" : "mr-auto")}>
+                          {msg.role === 'model' && <RiceDroidAvatar />}
+                          
+                          <div className={clsx("flex flex-col", msg.role === 'user' ? "items-end" : "items-start")}>
+                              <div className={clsx(
+                                 "p-3 border-[3px] border-black font-bold text-sm shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]",
+                                 msg.role === 'user' ? "bg-[#67e8f9] rounded-tl-xl rounded-bl-xl rounded-tr-xl" : "bg-white rounded-tr-xl rounded-br-xl rounded-tl-xl"
+                              )}>
+                                 {msg.text}
+                              </div>
+                              <span className="text-[10px] font-bold mt-1 opacity-50 uppercase px-1">{msg.role === 'user' ? 'YOU' : 'RICEDROID'}</span>
                           </div>
-                          <span className="text-[10px] font-bold mt-1 opacity-50 uppercase">{msg.role === 'user' ? 'YOU' : 'RICEDROID'}</span>
                        </div>
                     ))}
                     {isChatLoading && (
-                       <div className="mr-auto flex items-center gap-1 bg-white p-3 border-[3px] border-black rounded-xl">
-                          <div className="w-2 h-2 bg-black rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-75"></div>
-                          <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-150"></div>
+                       <div className="mr-auto flex items-end gap-2">
+                          <RiceDroidAvatar />
+                          <div className="flex items-center gap-1 bg-white p-3 border-[3px] border-black rounded-xl rounded-tl-none">
+                              <div className="w-2 h-2 bg-black rounded-full animate-bounce"></div>
+                              <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-75"></div>
+                              <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-150"></div>
+                          </div>
                        </div>
                     )}
                     <div ref={chatEndRef} />
                  </div>
-                 
                  <div className="p-4 bg-zinc-100 border-t-[3px] border-black flex gap-2">
                     <input 
                       type="text" 
@@ -1429,11 +1416,8 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* BOT HUNTER SUCCESS */}
         {appState === AppState.SUCCESS && activeTab === 'BOT_HUNTER' && botResult && analyzingChannel && (
           <div className="max-w-4xl mx-auto animate-slide-up space-y-8">
-             
-             {/* Verdict Header */}
              <div className="bg-white border-[3px] border-black p-8 hard-shadow relative overflow-hidden">
                 <Tape className="-top-3 right-20 rotate-1" />
                 <div className="flex flex-col md:flex-row justify-between gap-6 relative z-10">
@@ -1455,12 +1439,9 @@ const App: React.FC = () => {
                       <span className="font-bold text-xs uppercase tracking-widest bg-black text-white px-2">Probability: {botResult.botScore}%</span>
                    </div>
                 </div>
-                
-                {/* Background Decor */}
                 <Bot className="absolute -bottom-4 -right-4 w-48 h-48 text-black/5 rotate-12" />
              </div>
 
-             {/* Evidence & Save */}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="bg-white border-[3px] border-black p-6 hard-shadow flex flex-col">
                    <h3 className="text-xl font-bold uppercase border-b-[3px] border-black pb-2 mb-4 flex items-center gap-2">
@@ -1493,7 +1474,6 @@ const App: React.FC = () => {
                 </div>
              </div>
 
-             {/* Chat Interrogation */}
              <div className="border-[3px] border-black bg-white hard-shadow relative flex flex-col h-[400px]">
                  <div className="bg-[#67e8f9] p-4 border-b-[3px] border-black flex justify-between items-center">
                     <div className="flex items-center gap-2">
@@ -1501,7 +1481,6 @@ const App: React.FC = () => {
                        <h3 className="font-bold text-xl uppercase tracking-tight">The Interrogation</h3>
                     </div>
                  </div>
-                 
                  <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-dots">
                     {chatHistory.length === 0 && (
                        <div className="text-center opacity-40 mt-10">
@@ -1509,26 +1488,32 @@ const App: React.FC = () => {
                        </div>
                     )}
                     {chatHistory.map((msg, i) => (
-                       <div key={i} className={clsx("flex flex-col max-w-[80%]", msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start")}>
-                          <div className={clsx(
-                             "p-3 border-[3px] border-black font-bold text-sm shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]",
-                             msg.role === 'user' ? "bg-[#fde047] rounded-tl-xl rounded-bl-xl rounded-tr-xl" : "bg-white rounded-tr-xl rounded-br-xl rounded-tl-xl"
-                          )}>
-                             {msg.text}
+                       <div key={i} className={clsx("flex items-end gap-2 max-w-[85%]", msg.role === 'user' ? "ml-auto flex-row-reverse" : "mr-auto")}>
+                          {msg.role === 'model' && <RiceDroidAvatar />}
+
+                          <div className={clsx("flex flex-col", msg.role === 'user' ? "items-end" : "items-start")}>
+                              <div className={clsx(
+                                 "p-3 border-[3px] border-black font-bold text-sm shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]",
+                                 msg.role === 'user' ? "bg-[#fde047] rounded-tl-xl rounded-bl-xl rounded-tr-xl" : "bg-white rounded-tr-xl rounded-br-xl rounded-tl-xl"
+                              )}>
+                                 {msg.text}
+                              </div>
+                              <span className="text-[10px] font-bold mt-1 opacity-50 uppercase px-1">{msg.role === 'user' ? 'DETECTIVE' : 'SYSTEM'}</span>
                           </div>
-                          <span className="text-[10px] font-bold mt-1 opacity-50 uppercase">{msg.role === 'user' ? 'DETECTIVE' : 'SYSTEM'}</span>
                        </div>
                     ))}
                     {isChatLoading && (
-                       <div className="mr-auto flex items-center gap-1 bg-white p-3 border-[3px] border-black rounded-xl">
-                          <div className="w-2 h-2 bg-black rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-75"></div>
-                          <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-150"></div>
+                       <div className="mr-auto flex items-end gap-2">
+                          <RiceDroidAvatar />
+                          <div className="flex items-center gap-1 bg-white p-3 border-[3px] border-black rounded-xl rounded-tl-none">
+                              <div className="w-2 h-2 bg-black rounded-full animate-bounce"></div>
+                              <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-75"></div>
+                              <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-150"></div>
+                          </div>
                        </div>
                     )}
                     <div ref={chatEndRef} />
                  </div>
-                 
                  <div className="p-4 bg-zinc-100 border-t-[3px] border-black flex gap-2">
                     <input 
                       type="text" 
@@ -1543,20 +1528,16 @@ const App: React.FC = () => {
                     </button>
                  </div>
              </div>
-
           </div>
         )}
 
-        {/* VIDEO CHAT SUCCESS */}
         {appState === AppState.SUCCESS && activeTab === 'VIDEO_CHAT' && activeVideoId && (
             <div className="max-w-4xl mx-auto animate-slide-up space-y-8">
-                 {/* BETA WARNING BANNER */}
                  <div className="bg-[#fde047]/20 border-[3px] border-black border-dashed p-4 text-center">
                     <p className="font-bold text-sm uppercase">🧪 Experimental Feature: Results may vary. Search grounding enabled.</p>
                  </div>
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* Video Player & Info */}
                     <div className="flex flex-col gap-4">
                         <div className="bg-black border-[3px] border-black hard-shadow aspect-video relative rotate-1">
                             <iframe 
@@ -1582,7 +1563,6 @@ const App: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Chat Area */}
                     <div className="border-[3px] border-black bg-white hard-shadow relative flex flex-col h-[500px]">
                         <div className="bg-[#a78bfa] p-4 border-b-[3px] border-black flex justify-between items-center">
                             <div className="flex items-center gap-2">
@@ -1592,21 +1572,28 @@ const App: React.FC = () => {
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-dots">
                              {chatHistory.map((msg, i) => (
-                                <div key={i} className={clsx("flex flex-col max-w-[80%]", msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start")}>
-                                    <div className={clsx(
-                                        "p-3 border-[3px] border-black font-bold text-sm shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]",
-                                        msg.role === 'user' ? "bg-[#fde047] rounded-tl-xl rounded-bl-xl rounded-tr-xl" : "bg-white rounded-tr-xl rounded-br-xl rounded-tl-xl"
-                                    )}>
-                                        {msg.text}
+                                <div key={i} className={clsx("flex items-end gap-2 max-w-[85%]", msg.role === 'user' ? "ml-auto flex-row-reverse" : "mr-auto")}>
+                                    {msg.role === 'model' && <RiceDroidAvatar />}
+
+                                    <div className={clsx("flex flex-col", msg.role === 'user' ? "items-end" : "items-start")}>
+                                        <div className={clsx(
+                                            "p-3 border-[3px] border-black font-bold text-sm shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]",
+                                            msg.role === 'user' ? "bg-[#fde047] rounded-tl-xl rounded-bl-xl rounded-tr-xl" : "bg-white rounded-tr-xl rounded-br-xl rounded-tl-xl"
+                                        )}>
+                                            {msg.text}
+                                        </div>
+                                        <span className="text-[10px] font-bold mt-1 opacity-50 uppercase px-1">{msg.role === 'user' ? 'YOU' : 'BUDDY'}</span>
                                     </div>
-                                    <span className="text-[10px] font-bold mt-1 opacity-50 uppercase">{msg.role === 'user' ? 'YOU' : 'BUDDY'}</span>
                                 </div>
                              ))}
                              {isChatLoading && (
-                                <div className="mr-auto flex items-center gap-1 bg-white p-3 border-[3px] border-black rounded-xl">
-                                    <div className="w-2 h-2 bg-black rounded-full animate-bounce"></div>
-                                    <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-75"></div>
-                                    <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-150"></div>
+                                <div className="mr-auto flex items-end gap-2">
+                                    <RiceDroidAvatar />
+                                    <div className="flex items-center gap-1 bg-white p-3 border-[3px] border-black rounded-xl rounded-tl-none">
+                                        <div className="w-2 h-2 bg-black rounded-full animate-bounce"></div>
+                                        <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-75"></div>
+                                        <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-150"></div>
+                                    </div>
                                 </div>
                              )}
                              <div ref={chatEndRef} />
@@ -1636,12 +1623,11 @@ const App: React.FC = () => {
 
       </main>
 
-      {/* FOOTER */}
       <footer className="absolute bottom-4 w-full text-center font-bold text-xs pointer-events-none">
          <button onClick={() => setShowChangelog(true)} className="pointer-events-auto bg-white border-2 border-black px-3 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-y-[2px] transition-all uppercase">
-           v2.20 Changelog
+           v2.22 Changelog
          </button>
-         <p className="mt-2 opacity-50">BUILT WITH HATE & LOVE</p>
+         <p className="mt-2 opacity-50 bg-white/50 inline-block px-1">BUILT WITH HATE & LOVE</p>
       </footer>
     </div>
   );

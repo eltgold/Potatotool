@@ -1,15 +1,15 @@
-
-
 export const extractVideoId = (url: string): string | null => {
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
-  const match = url.match(regExp);
-  return (match && match[2].length === 11) ? match[2] : null;
+  try {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  } catch (e) {
+    return null;
+  }
 };
 
 export const extractChannelId = (url: string): string | null => {
   // Supports youtube.com/channel/ID and simple @handle (requires search)
-  // For simplicity in this app, we mainly rely on extracting channel from video ID 
-  // or explicit channel IDs.
   if (url.includes('/channel/')) {
     const parts = url.split('/channel/');
     return parts[1].split('/')[0].split('?')[0];
@@ -60,7 +60,7 @@ export interface SearchResult {
   channelTitle: string;
   publishedAt?: string;
   description?: string;
-  isSus?: boolean; // New field for SafeSearch
+  isSus?: boolean;
 }
 
 const INVIDIOUS_INSTANCES = [
@@ -71,7 +71,6 @@ const INVIDIOUS_INSTANCES = [
   'https://invidious.nerdvpn.de'
 ];
 
-// Lightweight client-side sus detector for Store Results
 const SUS_KEYWORDS = [
   "nsfw", "18+", "porn", "xxx", "sex", "nude", "naked", "boobs", "ass", 
   "thicc", "hot girl", "bikini", "lingerie", "onlyfans", "dick", "cock", 
@@ -84,13 +83,9 @@ const checkForSus = (text: string): boolean => {
   return SUS_KEYWORDS.some(k => lower.includes(k));
 };
 
-// Helper to get the best available API Key dynamically
 const getApiKey = (): string | null => {
-  // 1. User provided key
   const userKey = localStorage.getItem('ricetool_api_key');
   if (userKey) return userKey;
-  
-  // 2. Hardcoded fallback (Might hit quota limits)
   return "AIzaSyDVcFhERQvxsfbVsjYZSFqW--Kwj2-PMK8";
 };
 
@@ -109,7 +104,6 @@ export const fetchVideoMetadata = async (videoId: string): Promise<VideoMetadata
         const data = await response.json();
         if (data.items && data.items.length > 0) {
           const snippet = data.items[0].snippet;
-          console.log("YouTube Data API success");
           return {
             title: snippet.title,
             description: snippet.description,
@@ -118,22 +112,19 @@ export const fetchVideoMetadata = async (videoId: string): Promise<VideoMetadata
             channelTitle: snippet.channelTitle
           };
         }
-      } else {
-        console.warn("YouTube Data API failed. Status:", response.status);
       }
     }
   } catch (e) {
     console.warn("YouTube Data API error:", e);
   }
 
-  // STRATEGY 2: Invidious API (Public Instances Rotation)
+  // STRATEGY 2: Invidious API
   console.log("Attempting Invidious API Fallback...");
   for (const instance of INVIDIOUS_INSTANCES) {
     try {
       const response = await fetch(`${instance}/api/v1/videos/${videoId}`);
       if (response.ok) {
         const data = await response.json();
-        console.log("Invidious API success from:", instance);
         return {
           title: data.title,
           description: data.description,
@@ -143,12 +134,11 @@ export const fetchVideoMetadata = async (videoId: string): Promise<VideoMetadata
         };
       }
     } catch (e) {
-      console.warn(`Failed to fetch from ${instance}`);
       continue;
     }
   }
 
-  // STRATEGY 3: oEmbed (Last Resort - Title Only)
+  // STRATEGY 3: oEmbed
   try {
      console.log("Attempting oEmbed Fallback...");
      const oembedUrl = `https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`;
@@ -194,7 +184,6 @@ export const fetchChannelDetails = async (channelId: string): Promise<ChannelDet
         }
     } catch(e) { console.error(e); }
 
-    // Invidious Fallback
     for (const instance of INVIDIOUS_INSTANCES) {
         try {
             const response = await fetch(`${instance}/api/v1/channels/${channelId}`);
@@ -215,14 +204,11 @@ export const fetchChannelDetails = async (channelId: string): Promise<ChannelDet
 }
 
 export const searchYouTubeVideos = async (query: string): Promise<SearchResult[]> => {
-  console.log("Searching for:", query);
-  
   try {
     const apiKey = getApiKey();
     if (apiKey) {
       const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video,channel&q=${encodeURIComponent(query)}&key=${apiKey}&maxResults=16`;
       const response = await fetch(apiUrl);
-      
       if (response.ok) {
         const data = await response.json();
         if (data.items && Array.isArray(data.items)) {
@@ -243,7 +229,6 @@ export const searchYouTubeVideos = async (query: string): Promise<SearchResult[]
     console.warn("YouTube Search API error:", e);
   }
 
-  // Invidious Fallback
   for (const instance of INVIDIOUS_INSTANCES) {
     try {
       const response = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=all`);
@@ -265,24 +250,24 @@ export const searchYouTubeVideos = async (query: string): Promise<SearchResult[]
        console.warn(`Search failed on ${instance}`);
     }
   }
-
   return [];
 };
 
-// NEW: Fetches a "Creator Feed" (Vlog, Tech, Gaming) excluding music
 export const fetchExploreFeed = async (): Promise<SearchResult[]> => {
-  // Query designed to capture typical YouTuber content and filter out music
-  const query = "(vlog|gaming|tech|challenge|commentary|analysis) -vevo -lyrics -\"official music video\"";
+  // Safe quoted string for query
+  const query = '(vlog|gaming|tech|challenge|commentary|analysis) -vevo -lyrics -"official music video"';
   return searchYouTubeVideos(query);
 };
 
-export const fetchChannelLatestVideos = async (channelId: string): Promise<SearchResult[]> => {
-    console.log("Fetching videos for channel:", channelId);
-    
+export const fetchChannelVideos = async (channelId: string, pageToken?: string): Promise<SearchResult[]> => {
     try {
         const apiKey = getApiKey();
         if (apiKey) {
-            const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&maxResults=15&key=${apiKey}`;
+            let apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&maxResults=24&key=${apiKey}`;
+            if (pageToken && !pageToken.startsWith('page:')) {
+                apiUrl += `&pageToken=${pageToken}`;
+            }
+            
             const response = await fetch(apiUrl);
              if (response.ok) {
                 const data = await response.json();
@@ -303,14 +288,19 @@ export const fetchChannelLatestVideos = async (channelId: string): Promise<Searc
         console.warn("Channel videos fetch failed:", e);
     }
     
-    // Invidious Fallback
+    // Invidious Fallback with mock pagination
+    let pageNum = 1;
+    if (pageToken && pageToken.startsWith('page:')) {
+        pageNum = parseInt(pageToken.split(':')[1]) || 1;
+    }
+
     for (const instance of INVIDIOUS_INSTANCES) {
         try {
-            const response = await fetch(`${instance}/api/v1/channels/${channelId}/videos`);
+            const response = await fetch(`${instance}/api/v1/channels/${channelId}/videos?page=${pageNum}`);
             if (response.ok) {
                 const data = await response.json();
                 if (data.videos && Array.isArray(data.videos)) {
-                    return data.videos.slice(0, 15).map((item: any) => ({
+                    return data.videos.slice(0, 24).map((item: any) => ({
                         id: item.videoId,
                         type: 'video',
                         title: item.title,

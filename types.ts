@@ -1,4 +1,3 @@
-
 export interface ThumbnailScores {
   clarity: number;
   curiosity: number;
