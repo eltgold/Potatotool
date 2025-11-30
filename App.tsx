@@ -858,7 +858,7 @@ const App: React.FC = () => {
                             <div className="bg-white border-4 border-black p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)]">
                                 <h3 className="font-black text-xl mb-2 uppercase bg-yellow-300 inline-block px-2">Evidence</h3>
                                 <ul className="list-disc pl-5 space-y-2 font-bold text-sm">
-                                    {botResult.evidence.map((ev, i) => (
+                                    {(botResult.evidence || []).map((ev, i) => (
                                         <li key={i}>{ev}</li>
                                     ))}
                                 </ul>
@@ -989,7 +989,7 @@ const App: React.FC = () => {
                   <div className="border-8 border-black bg-white p-6 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
                        <h3 className="font-black text-2xl mb-4 flex items-center gap-3 bg-yellow-300 inline-block px-2 border-4 border-black transform -rotate-2"><Sparkles className="w-6 h-6 text-black fill-white stroke-[3px]" /> {isCelebrationMode ? "WHY IT'S PERFECT:" : "FIX IT NOW:"}</h3>
                        <ul className="space-y-4">
-                         {result.suggestions.map((s, i) => (
+                         {(result.suggestions || []).map((s, i) => (
                            <li key={i} className="flex items-start gap-3 text-lg font-bold bg-gray-100 p-3 border-4 border-black hover:bg-green-100 transition-colors">
                              <CheckCircle2 className="w-8 h-8 text-green-500 shrink-0 mt-0.5 fill-black stroke-white stroke-[3px]" />
                              <span className="leading-tight">{s}</span>
