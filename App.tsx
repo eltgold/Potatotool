@@ -16,17 +16,6 @@ import { AnalysisChart } from './components/AnalysisChart';
 
 const CHANGELOG_DATA: ChangelogEntry[] = [
   {
-      version: "v2.32",
-      date: "2025-12-22",
-      title: "the lobotomy update",
-      changes: [
-          "added weird zoom effect.",
-          "added crt scanlines.",
-          "ui is now 100% less professional.",
-          "cursor is confused."
-      ]
-  },
-  {
       version: "v2.31",
       date: "2025-12-21",
       title: "the tape update",
@@ -445,11 +434,6 @@ const App: React.FC = () => {
       } else {
           // Attempt to resolve channel if it's a handle
           if (input.includes('@') || input.includes('youtube.com/')) {
-               // Fallback: treat as channel ID or search?
-               // For now, let's treat any non-video link as potential channel logic failure or assume invalid.
-               // Actually, extractChannelId handles /channel/.
-               // If it's a handle (@user), we'd need search. 
-               // For simplicity, error if not standard link.
                setErrorMsg("invalid video or channel link.");
                setAppState(AppState.ERROR);
           } else {
@@ -523,11 +507,9 @@ const App: React.FC = () => {
       const objectUrl = URL.createObjectURL(file);
       setThumbnailSrc(objectUrl);
       setImageBase64(base64);
-      // For raw file uploads, title is empty.
       setVideoTitle("Uploaded Image"); 
       
       if (activeTab === 'DIRTY_TESTER') {
-          // Wait for user to click button, same flow as Rater
           setAppState(AppState.READY_TO_ANALYZE);
       } else {
           setShowImageWarning(true);
@@ -748,7 +730,6 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="flex-1 bg-[#181818] p-6 overflow-y-auto">
-                      {/* ... [RiceTube Content] ... */}
                       {rtCategory === 'SUS' && !isSusUnlocked ? (
                           <div className="flex flex-col items-center justify-center h-full">
                               <div className="bg-zinc-800 border-2 border-red-500 p-8 rounded-xl max-w-md w-full text-center shadow-xl">
@@ -1609,7 +1590,7 @@ const App: React.FC = () => {
 
       <footer className="absolute bottom-4 w-full text-center font-bold text-xs pointer-events-none">
          <button onClick={() => setShowChangelog(true)} className="pointer-events-auto bg-white border-2 border-black px-3 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-y-[2px] transition-all uppercase dark:bg-zinc-800 dark:text-white dark:border-white dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)]">
-           v2.32 changelog
+           v2.31 changelog
          </button>
          <p className="mt-2 opacity-50 bg-white/50 inline-block px-1 dark:text-white dark:bg-zinc-900/50">built with hate & love</p>
       </footer>
