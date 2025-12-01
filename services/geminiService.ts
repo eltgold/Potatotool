@@ -4,7 +4,16 @@ import { AnalysisResult, ChatMessage, BotAnalysisResult, VideoAnalysisResult, Ch
 
 const getAiClient = () => {
   const userKey = localStorage.getItem('ricetool_api_key');
-  const apiKey = userKey || process.env.API_KEY || "AIzaSyDVcFhERQvxsfbVsjYZSFqW--Kwj2-PMK8";
+  let envKey = undefined;
+  try {
+    // Safely check for process.env to avoid ReferenceError in browser
+    if (typeof process !== 'undefined' && process.env) {
+      envKey = process.env.API_KEY;
+    }
+  } catch (e) {
+    // process is not defined, ignore
+  }
+  const apiKey = userKey || envKey || "AIzaSyDVcFhERQvxsfbVsjYZSFqW--Kwj2-PMK8";
   return new GoogleGenAI({ apiKey });
 };
 

@@ -1,9 +1,10 @@
+
 import { VideoMetadata, ChannelDetails, SearchResult } from '../types';
 
 export const extractVideoId = (url: string): string | null => {
   try {
-    // Using new RegExp to avoid syntax errors with forward slashes in some environments
-    const regExp = new RegExp(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/);
+    // Cleaner regex definition to avoid parser issues
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? match[2] : null;
   } catch (e) {
